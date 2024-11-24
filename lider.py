@@ -15,22 +15,40 @@ class Lider(object):
         self.mensagens = []
         self.mensagens_commitadas = []
 
-    def registrar_votante(self,uri):
-        self.votantes.append(uri)
-        print(f"Votante registrado: {uri}")
-        print(f"Votante registrado teste: {self.votantes[0]}")
+    def registrar_votante(self, uri):
+        print(f"ESTOU AQUI NO VOTANTE")
+        if uri not in self.votantes:
+            self.votantes.append(uri)
+            print(f"Votante registrado: {uri}")
+            print(f"Lista atual de votantes: {self.votantes}")
+            #print(f"Votante registrado teste: {self.votantes[0]}")
+        else:
+            print(f"Votante já registrado: {uri}")
 
     def registrar_observador(self, uri):
-        self.observadores.append(uri)
+        self.observadores.append(uri)   
         print(f"Observador registrado: {uri}")
 
     def publicar_mensagem(self, menssage):
-        self.mensagens.append(menssage)
-        print(f"Mensagem Registrada: {menssage}")
-        self.replicar_para_votante(menssage)
-        self.notificar_observadores(menssage)
+        if menssage not in self.mensagens:
+            # for votante_uri in self.votantes:
+            #     try:
+            #         print(f"Mensagem Registrada: {menssage}")
+            #         votante = Pyro5.api.Proxy(votante_uri)
+            #         votante.replicar(menssage)
+            #     except Pyro5.errors.CommunicationError as e:
+            #         print(f"Erro ao enviar mensagem para o votante {votante_uri}: {e}")
+            print(f"ESTOU AQUI AGORA")
+            print(f"Mensagem Registrada: {menssage}")
+            self.mensagens.append(menssage)
+            self.replicar_para_votante(menssage)
+            self.notificar_observadores(menssage)
+        else:
+           print(f"Mensagem já registrada: {menssage}")
 
     def replicar_para_votante(self, menssage):
+        print("Estou Aqui2!")
+        print(f"Votantes registrados: {self.votantes}")  # Verificando se os votantes estão registrados
         for uri in self.votantes:
             try:
                 print("Estou Aqui!")
@@ -80,7 +98,11 @@ class Lider(object):
             print("Nenhum observador disponível para promoção. ")
 
     def commit_mensagem(self, mensagem): # marca mensagem no indice fornecido como comitada
-        self.mensagens_commitadas.append(mensagem)
+        if mensagem not in self.mensagens:
+            self.mensagens_commitadas.append(mensagem)
+            print(f"Mensagem comitada: {mensagem}")
+        else:
+            print(f"Mensagem já foi commitada: {mensagem}")
 
     def obter_mensagens_commitadas(self): # Retorna todas as mensagens que foram commitadas.
         return self.mensagens_commitadas    
