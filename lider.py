@@ -20,7 +20,7 @@ class Lider(object):
         if uri not in self.votantes:
             self.votantes.append(uri)
             print(f"Votante registrado: {uri}")
-            print(f"Lista atual de votantes: {self.votantes}")
+            #print(f"Lista atual de votantes: {self.votantes}")
             #print(f"Votante registrado teste: {self.votantes[0]}")
         else:
             print(f"Votante já registrado: {uri}")
@@ -31,13 +31,6 @@ class Lider(object):
 
     def publicar_mensagem(self, menssage):
         if menssage not in self.mensagens:
-            # for votante_uri in self.votantes:
-            #     try:
-            #         print(f"Mensagem Registrada: {menssage}")
-            #         votante = Pyro5.api.Proxy(votante_uri)
-            #         votante.replicar(menssage)
-            #     except Pyro5.errors.CommunicationError as e:
-            #         print(f"Erro ao enviar mensagem para o votante {votante_uri}: {e}")
             print(f"ESTOU AQUI AGORA")
             print(f"Mensagem Registrada: {menssage}")
             self.mensagens.append(menssage)

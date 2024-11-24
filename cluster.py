@@ -3,6 +3,7 @@ import threading
 import time
 from lider import Lider
 from votante_observador import Votante
+from votante_observador import Observador
 from publicador import Publicador  # Importando a classe Publicador
 
 class Cluster:
@@ -13,7 +14,7 @@ class Cluster:
     def enviar_mensagem(self, mensagem):
         try:
             print(f"Enviando mensagem para o líder: {mensagem}")
-            self.lider.publicar_mensagem(mensagem)
+            self.publicador.enviar_mensagem(mensagem)
             print(f"Mensagem enviada para o Líder: {mensagem}")
         except Pyro5.errors.CommunicationError as e:
             print(f"Erro ao enviar mensagem para o Líder: {e}")
@@ -54,6 +55,27 @@ def iniciar_votante(votante_id, uri_lider):
     
     daemon.requestLoop()  # Mantém o votante ativo para interagir com o líder
 
+def iniciar_observador(uri_lider):
+    """Inicializa um Votante e o registra no servidor de nomes."""
+    votante = Observador()
+    daemon = Pyro5.server.Daemon()  # Cria um daemon para o votante
+    uri = daemon.register(votante)
+    
+    try:
+        servidor_nomes = Pyro5.api.locate_ns()
+        servidor_nomes.register(f"Observador", uri)
+        print(f"Observador registrado com URI: {uri}")
+
+        # Cria um novo proxy para o líder em cada thread
+        lider_proxy = Pyro5.api.Proxy(uri_lider)
+        lider_proxy.registrar_observador(uri)  # Registra o votante no líder
+        print(f"Observador registrado no lider")
+    except Pyro5.errors.NamingError as e:
+        print(f"Erro ao registrar observador no servidor de nomes: {e}")
+    
+    daemon.requestLoop()  # Mantém o votante ativo para interagir com o líder
+
+
 def main():
     # Inicia o Líder em uma thread separada
     lider_thread = threading.Thread(target=iniciar_lider, daemon=True)
@@ -75,8 +97,12 @@ def main():
             votante_thread.start()
             time.sleep(1)  # Aguarde um pouco entre os votantes
 
+        observador_thread = threading.Thread(target=iniciar_observador, args=(uri_lider,), daemon=True)
+        observador_thread.start()
+        time.sleep(1)
+
         # Envia uma mensagem de teste
-        cluster.enviar_mensagem("Teste de mensagem para líder.")
+        cluster.enviar_mensagem("MENSAGEM1234!!!.")
 
     except Pyro5.errors.NamingError as e:
         print(f"Erro ao localizar o servidor de nomes ou líder: {e}")
