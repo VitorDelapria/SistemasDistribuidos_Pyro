@@ -9,19 +9,32 @@ import time
 
 @Pyro5.server.expose
 class Lider(object):
-    def __init__(self):
+    def __init__(self, max_falhas):
         self.votantes = []
         self.observadores = []
         self.mensagens = []
+        self.log = [] # Log de gravações do Lider (mensagem + metadados)
         self.mensagens_commitadas = []
+        self.confirmacoes = {} # confirmações recebidas dos votantes
+        self.max_falhas = max_falhas # Numero maximo de falhas toleradas
+        self.quorum = 2 * max_falhas + 1 # tamanho do quorum
+        self.falhas = {}
+        self.falhas_toleradas = 1
+        self.quorum = self.falhas_toleradas + 1 
+
+     
+    def verificar_status(self):
+        for votante, falhas in self.falhas.items():
+            if falhas >= self.max_falhas:
+                print(f"Votante {votante} falhou {falhas} vezes. Considerando como falho.")
+                # Aqui você pode remover o votante ou tomar qualquer outra ação
+                self.falhas[votante] = 0  # Resetando as falhas do votante
 
     def registrar_votante(self, uri):
         print(f"ESTOU AQUI NO VOTANTE")
         if uri not in self.votantes:
             self.votantes.append(uri)
             print(f"Votante registrado: {uri}")
-            #print(f"Lista atual de votantes: {self.votantes}")
-            #print(f"Votante registrado teste: {self.votantes[0]}")
         else:
             print(f"Votante já registrado: {uri}")
 
@@ -29,29 +42,50 @@ class Lider(object):
         self.observadores.append(uri)   
         print(f"Observador registrado: {uri}")
 
-    def publicar_mensagem(self, menssage):
-        if menssage not in self.mensagens:
-            print(f"ESTOU AQUI AGORA")
-            print(f"Mensagem Registrada: {menssage}")
-            self.mensagens.append(menssage)
-            self.replicar_para_votante(menssage)
-            self.notificar_observadores(menssage)
+    def publicar_mensagem(self, mensagem):
+        if mensagem not in [entry["mensagem"] for entry in self.log]:
+            nova_entrada = {"mensagem": mensagem, "confirmado": False, "epoca": len(self.log)}
+            self.log.append(nova_entrada)
+            print(f"Mensagem gravada: {mensagem}")
+            self.replicar_para_votante(len(self.log) - 1)
         else:
-           print(f"Mensagem já registrada: {menssage}")
+            print(f"Mensagem já registrada: {mensagem}")
 
-    def replicar_para_votante(self, menssage):
-        print("Estou Aqui2!")
-        print(f"Votantes registrados: {self.votantes}")  # Verificando se os votantes estão registrados
+
+    def replicar_para_votante(self, offset):
         for uri in self.votantes:
             try:
-                print("Estou Aqui!")
-                print(f"votante uri: {uri}")
                 votante = Pyro5.api.Proxy(uri)
-                votante.replicar(menssage)
-                print(f"Mensagem replicada para: {uri}")
+                print("OLÁ ESTOU")
+                votante.buscar(offset, len(self.log))
+                print(f"Notificado votante {uri} sobre novo log no offset {offset}.")
             except Pyro5.errors.CommunicationError as e:
-                print(f"Falha ao replicar para: {uri}. Erro: {e}")
-                self.remover_votante(uri)
+                print(f"Falha ao notificar votante {uri}: {e}")
+
+    def fornecer_dados(self, offset, epoca):
+        # Retorna os dados de log a partir do offset e epoca
+        dados = {"erro": False, "dados": [], "maior_offset": len(self.log) - 1, "maior_epoca": epoca}
+        
+        # Verifica se o offset solicitado é maior que o tamanho do log
+        if offset >= len(self.log):
+            dados["erro"] = True
+            dados["maior_offset"] = len(self.log) - 1
+            dados["maior_epoca"] = epoca
+        else:
+            dados["dados"] = self.log[offset:]
+        
+        return dados
+    
+
+    def receber_confirmacao(self, offset, votante_uri):
+        if offset not in self.confirmacoes:
+            self.confirmacoes[offset] = set()
+        self.confirmacoes[offset].add(votante_uri)
+
+        if len(self.confirmacoes[offset]) >= (self.quorum // 2) + 1:
+            self.log[offset]["confirmado"] = True
+            print(f"Quorum atingido para a mensagem no offset {offset}.")
+            self.commit_mensagem(self.log[offset]["mensagem"])
 
     def notificar_observadores(self, menssage):
         for uri in self.observadores:
@@ -63,19 +97,21 @@ class Lider(object):
                 print(f"Falha ao notificar {uri}. Observador pode estar offline. ")
 
     def enviar_heartbeat(self):
-        print("EstouAQUI6!")
-        for uri in self.votantes:
-            try:
-                votante = Pyro5.api.Proxy(uri)
-                if uri == self.votantes[0]:
-                    raise Pyro5.errors.CommunicationError("Falha programática para teste.")
-                if not votante.heartbeat():
-                    raise Pyro5.errors.CommunicationError("Heartbeat não reconhecido.")  # Forçar falha                    
-                print(f"Heartbeat enviado e reconhecido por {uri}")
-            except Pyro5.errors.CommunicationError:
-                print(f"Falha no Heartbeat com {uri}. Considerando votante como falho. ")
-                self.remover_votante(uri)
-                self.promover_observador()
+        print("Enviando Heartbeats...")
+        while True:  # Loop contínuo
+            for uri in self.votantes:
+                try:
+                    votante = Pyro5.api.Proxy(uri)
+                    if not votante.heartbeat():  # Verifica se o votante responde
+                        raise Pyro5.errors.CommunicationError("Heartbeat não reconhecido.")
+                    print(f"Heartbeat enviado e reconhecido por {uri}")
+                except Pyro5.errors.CommunicationError:
+                    print(f"Falha no Heartbeat com {uri}. Considerando votante como falho.")
+                    self.remover_votante(uri)
+                    self.promover_observador()
+            self.verificar_status()  # Verifica as falhas periodicamente
+            time.sleep(5)  # Envia heartbeat a cada 5 segundos
+
 
     def remover_votante(self, uri):
         if uri in self.votantes:

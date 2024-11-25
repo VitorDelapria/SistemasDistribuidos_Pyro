@@ -21,7 +21,7 @@ class Cluster:
 
 def iniciar_lider():
     """Inicia o Líder e registra no servidor de nomes."""
-    lider = Lider()
+    lider = Lider(max_falhas=1)
     daemon = Pyro5.server.Daemon()  # Cria um daemon para o líder
     uri = daemon.register(lider)
     
@@ -30,14 +30,25 @@ def iniciar_lider():
         servidor_nomes.register("Lider_Epoca1", uri)
         print(f"Líder registrado com URI: {uri}")
 
+        # Inicia a thread para enviar heartbeats periodicamente
+    #    threading.Thread(target=send_heartbeat, args=(lider,), daemon=True).start()
+
     except Pyro5.errors.NamingError as e:
         print(f"Erro ao registrar no servidor de nomes: {e}")
     
     daemon.requestLoop()  # Mantém o líder ativo para receber mensagens
 
+# Função que envia heartbeat periodicamente
+def send_heartbeat(lider):
+    while True:
+        print("Enviando heartbeat para votantes...")
+        lider.enviar_heartbeat()  # Envia o heartbeat para os votantes
+        lider.verificar_status()  # Verifica o status após o envio do heartbeat
+        time.sleep(5)  # Espera 5 segundos antes de enviar o próximo heartbeat
+
 def iniciar_votante(votante_id, uri_lider):
     """Inicializa um Votante e o registra no servidor de nomes."""
-    votante = Votante(votante_id)
+    votante = Votante(votante_id, uri_lider)
     daemon = Pyro5.server.Daemon()  # Cria um daemon para o votante
     uri = daemon.register(votante)
     

@@ -7,9 +7,44 @@ import time
 
 @Pyro5.api.expose
 class Votante:
-    def __init__(self, votante_id):
+    def __init__(self, votante_id, uri_lider):
         self.mensagens = []  # Armazena mensagens replicadas
         self.votante_id = votante_id
+        self.log = []
+        self.ultima_epoca = 0
+        self.lider_uri = uri_lider  # URI do líder
+
+
+    def buscar(self, offset, epoca):
+        print("Aqui0")
+        # Obtém os dados do líder
+        try:
+            print("Aqui1")
+            lider_proxy = Pyro5.api.Proxy(self.lider_uri)
+            resposta = lider_proxy.fornecer_dados(offset, epoca)
+            print("Aqui1")
+            if resposta["erro"]:
+                print("Aqui2")
+                print(f"Votante {self.votante_id}: Log inconsistente. Truncando até offset {resposta['maior_offset']}.")
+                self.log = self.log[:resposta["maior_offset"] + 1]
+                self.ultima_epoca = resposta["maior_epoca"]
+                self.buscar(resposta["maior_offset"], resposta["maior_epoca"])  # Repetir busca com dados atualizados
+            else:
+                print("Aqui3")
+                self.log.extend(resposta["dados"])
+                print(f"Votante {self.votante_id}: Log atualizado com {len(resposta['dados'])} novas entradas.")
+                for i in range(len(resposta["dados"])):
+                    self.confirmar(offset + i)
+        except Pyro5.errors.CommunicationError as e:
+            print(f"Erro ao tentar acessar o Líder para buscar dados: {e}")
+
+    def confirmar(self, offset):
+        try:
+            lider_proxy = Pyro5.api.Proxy(self.lider_uri)
+            lider_proxy.receber_confirmacao(offset, self.votante_id)
+            print(f"Votante {self.votante_id}: Confirmação enviada para offset {offset}.")
+        except Pyro5.errors.CommunicationError as e:
+            print(f"Erro ao enviar confirmação: {e}")
 
     def replicar(self, mensagem):  
         if mensagem not in self.mensagens:                          # Replica as mensagens
