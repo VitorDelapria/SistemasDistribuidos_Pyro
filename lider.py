@@ -98,19 +98,19 @@ class Lider(object):
 
     def enviar_heartbeat(self):
         print("Enviando Heartbeats...")
-        while True:  # Loop contínuo
-            for uri in self.votantes:
-                try:
-                    votante = Pyro5.api.Proxy(uri)
-                    if not votante.heartbeat():  # Verifica se o votante responde
-                        raise Pyro5.errors.CommunicationError("Heartbeat não reconhecido.")
-                    print(f"Heartbeat enviado e reconhecido por {uri}")
-                except Pyro5.errors.CommunicationError:
-                    print(f"Falha no Heartbeat com {uri}. Considerando votante como falho.")
-                    self.remover_votante(uri)
-                    self.promover_observador()
-            self.verificar_status()  # Verifica as falhas periodicamente
-            time.sleep(5)  # Envia heartbeat a cada 5 segundos
+        #while True:  # Loop contínuo
+        for uri in self.votantes:
+            try:
+                votante = Pyro5.api.Proxy(uri)
+                if not votante.heartbeat():  # Verifica se o votante responde
+                    raise Pyro5.errors.CommunicationError("Heartbeat não reconhecido.")
+                print(f"Heartbeat enviado e reconhecido por {uri}")
+            except Pyro5.errors.CommunicationError:
+                print(f"Falha no Heartbeat com {uri}. Considerando votante como falho.")
+                self.remover_votante(uri)
+                self.promover_observador()
+        self.verificar_status()  # Verifica as falhas periodicamente
+        #time.sleep(5)  # Envia heartbeat a cada 5 segundos
 
 
     def remover_votante(self, uri):
@@ -129,13 +129,14 @@ class Lider(object):
     def commit_mensagem(self, mensagem): # marca mensagem no indice fornecido como comitada
         if mensagem not in self.mensagens:
             self.mensagens_commitadas.append(mensagem)
+            print(f"posição 1 {self.mensagens_commitadas[0]}")
             print(f"Mensagem comitada: {mensagem}")
         else:
             print(f"Mensagem já foi commitada: {mensagem}")
 
-    def obter_mensagens_commitadas(self): # Retorna todas as mensagens que foram commitadas.
-        return self.mensagens_commitadas    
-                
+    def obter_mensagens_commitadas(self, offset): # Retorna todas as mensagens que foram commitadas.
+        return self.mensagens_commitadas[offset:]
+
 def conection(): 
     lider = Lider()
     daemon = Pyro5.server.Daemon()

@@ -31,7 +31,7 @@ def iniciar_lider():
         print(f"Líder registrado com URI: {uri}")
 
         # Inicia a thread para enviar heartbeats periodicamente
-    #    threading.Thread(target=send_heartbeat, args=(lider,), daemon=True).start()
+      #  threading.Thread(target=send_heartbeat, args=(lider,), daemon=True).start()
 
     except Pyro5.errors.NamingError as e:
         print(f"Erro ao registrar no servidor de nomes: {e}")
@@ -113,7 +113,7 @@ def main():
         time.sleep(1)
 
         # Envia uma mensagem de teste
-        cluster.enviar_mensagem("MENSAGEM1234!!!.")
+        #cluster.enviar_mensagem("MENSAGEM1234!!!.")
 
     except Pyro5.errors.NamingError as e:
         print(f"Erro ao localizar o servidor de nomes ou líder: {e}")

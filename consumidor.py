@@ -1,51 +1,32 @@
-import Pyro5
-import time
-import sys
 import Pyro5.api
 
 class Consumidor:
-    def __init__(self):
-        self.mensagens_consumidas = []
+    def __init__(self, uri_lider):
+        self.broker = Pyro5.api.Proxy(uri_lider)
 
-    def consumir_mensagem(self, menssage):
-        print(f"[Consumidor] Consumindo mensagem: {menssage}")
-        self.mensagens_consumidas.append(menssage)
+    def consume_messages(self, offset):
+        print(f"Buscando mensagens a partir do offset: {offset}")
+        try:
+            print(f"EstouAQui!")
+            messages = self.broker.obter_mensagens_commitadas(offset)
+            if messages:
+                for message in messages:
+                    print(f"Mensagem consumida: {message}")
+                return offset + len(messages) 
+            else:
+                print("Nenhuma nova mensagem disponível.")
+        except Exception as e:
+            print(f"Erro ao buscar mensagens: {e}")
+        return offset
 
-    def esperar_mensagens_comitadas(self, uri):
-        lider = Pyro5.api.Proxy(uri)
-        while True:
-            mensagens_commitadas = lider.obter_mensagens_commitadas()
-            for menssage in mensagens_commitadas:
-                self.consumir_mensagem(menssage)
-            time.sleep(2)
+if __name__ == "__main__":
 
-def conection(role):
-    daemon = Pyro5.server.Daemon()  # Criar um único daemon
     ns = Pyro5.api.locate_ns()
+    uri_lider = ns.lookup("Lider_Epoca1")  
+    print(uri_lider)
+    consumidor = Consumidor(uri_lider)
+    current_offset = 0
 
-    # Conectar com o Líder
-    try:
-        uri_lider = ns.lookup("Lider_Epoca1")  # Buscando URI do líder no serviço de nomes
-        lider = Pyro5.api.Proxy(uri_lider)  # Criando um proxy para o líder
-        print("[Conexão] Líder encontrado com sucesso.")
-    except Pyro5.errors.CommunicationError as e:
-        print(f"[Erro de Comunicação] Não foi possível localizar o líder: {e}")
-        return
-
-    if role == "consumidor":
-        consumidor = Consumidor()
-        uri = daemon.register(consumidor)
-        ns.register("Consumidor1", uri)
-        print(f"Consumidor registrado com URI: {uri}")
-
-        # O consumidor começa a escutar por mensagens commitadas
-        consumidor.esperar_mensagens_comitadas(uri_lider)
-
-    daemon.requestLoop()  # Loop aqui usa o mesmo daemon
-
-if __name__ == "__main__":  # Corrigido para "__main__"
-    if len(sys.argv) != 2:
-        print("Uso: python3 consumidor.py [consumidor]")
-    else:
-        role = sys.argv[1].lower()
-        conection(role)  # Passando o role como parâmetro
+    while True:
+        input("Pressione Enter para buscar novas mensagens...")
+        current_offset = consumidor.consume_messages(current_offset)

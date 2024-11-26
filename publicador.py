@@ -27,7 +27,7 @@ def main():
         # Localiza o servidor de nomes e obtém a URI do Líder
         ns = Pyro5.api.locate_ns()
         uri_lider = ns.lookup("Lider_Epoca1")  # Buscar o líder no serviço de nomes
-
+        
         # Cria a instância do publicador
         publicador = Publicador(uri_lider)
         
