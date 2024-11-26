@@ -14,7 +14,8 @@ class Votante:
         self.ultima_epoca = 0
         self.lider_uri = uri_lider  # URI do líder
 
-
+    def heartbeat(self):
+        return True
     def buscar(self, offset, epoca):
         print("Aqui0")
         # Obtém os dados do líder

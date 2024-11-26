@@ -29,22 +29,18 @@ def iniciar_lider():
         servidor_nomes = Pyro5.api.locate_ns()
         servidor_nomes.register("Lider_Epoca1", uri)
         print(f"Líder registrado com URI: {uri}")
-
-        # Inicia a thread para enviar heartbeats periodicamente
-      #  threading.Thread(target=send_heartbeat, args=(lider,), daemon=True).start()
-
+        threading.Thread(target=send_heartbeat, args=(lider,), daemon=True).start()
     except Pyro5.errors.NamingError as e:
         print(f"Erro ao registrar no servidor de nomes: {e}")
     
     daemon.requestLoop()  # Mantém o líder ativo para receber mensagens
 
-# Função que envia heartbeat periodicamente
 def send_heartbeat(lider):
+    """Envia heartbeats periodicamente para os votantes registrados."""
     while True:
-        print("Enviando heartbeat para votantes...")
-        lider.enviar_heartbeat()  # Envia o heartbeat para os votantes
-        lider.verificar_status()  # Verifica o status após o envio do heartbeat
-        time.sleep(5)  # Espera 5 segundos antes de enviar o próximo heartbeat
+        print("Enviando heartbeat para os votantes...")
+        lider.enviar_heartbeat()
+        time.sleep(5)
 
 def iniciar_votante(votante_id, uri_lider):
     """Inicializa um Votante e o registra no servidor de nomes."""
