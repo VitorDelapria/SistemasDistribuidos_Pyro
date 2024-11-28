@@ -20,8 +20,8 @@ class Lider(object):
         self.max_falhas = max_falhas # Numero maximo de falhas toleradas
         self.quorum = 2 * max_falhas + 1 # tamanho do quorum
         self.falhas = {}
-        self.falhas_toleradas = 1
-        self.quorum = self.falhas_toleradas + 1 
+        #self.falhas_toleradas = 1
+        #self.quorum = self.falhas_toleradas + 1 
 
     def registrar_votante(self, uri):
         print(f"ESTOU AQUI NO VOTANTE")
@@ -89,16 +89,23 @@ class Lider(object):
             except Pyro5.errors.CommunicationError:
                 print(f"Falha ao notificar {uri}. Observador pode estar offline. ")
 
+    @Pyro5.api.expose
     def enviar_heartbeat(self, intervalo=5):
+        print(f"Estou aqui - {self.votantes}")
         def _heartbeat_task():
             while True:
                 print("Enviando Heartbeats...")
+                print(f"votantes - {self.votantes}")
                 for uri in self.votantes:
                     try:
                         votante = Pyro5.api.Proxy(uri)
                         if not votante.heartbeat():
+
+                            print(f"matou votante!!!")
                             raise Pyro5.errors.CommunicationError("Heartbeat não reconhecido.")
-                        print(f"Heartbeat enviado e reconhecido por {uri}")
+                        #print(f"Heartbeat enviado e reconhecido por {uri}")
+                        else:
+                            print(f"Votante Existe!!! - {votante}")
                         self.falhas[uri] = 0 
                     except Pyro5.errors.CommunicationError:
                         print(f"Falha no Heartbeat com {uri}. Incrementando contador de falhas.")
@@ -128,7 +135,7 @@ class Lider(object):
     def commit_mensagem(self, mensagem): # marca mensagem no indice fornecido como comitada
         if mensagem not in self.mensagens_commitadas:
             self.mensagens_commitadas.append(mensagem)
-            print(f"posição 1 {self.mensagens_commitadas[0]}")
+            #print(f"posição 1 {self.mensagens_commitadas[0]}")
             print(f"Mensagem comitada: {mensagem}")
         else:
             print(f"Mensagem já foi commitada: {mensagem}")
@@ -136,14 +143,23 @@ class Lider(object):
     def obter_mensagens_commitadas(self, offset): # Retorna todas as mensagens que foram commitadas a partir de um offset.
         return self.mensagens_commitadas[offset:]
 
+def send_heartbeat(lider):
+    """Envia heartbeats periodicamente para os votantes registrados."""
+    while True:
+        print("Enviando heartbeat para os votantes...")
+        lider.enviar_heartbeat()
+        time.sleep(5)
+
 def conection(): 
-    lider = Lider()
+
+    lider = Lider(max_falhas=1)
     daemon = Pyro5.server.Daemon()
     uri = daemon.register(lider)
     try: 
         servidor_nomes = Pyro5.api.locate_ns()
         servidor_nomes.register("Lider_Epoca1", uri)
         print(f"Líder registado com uri: {uri}")
+        threading.Thread(target=send_heartbeat, args=(lider,), daemon=True).start()
     except Pyro5.errors.NamingError as e:
         print(f"Erro ao registrar no servidor de nomes: {e}")
     daemon.requestLoop()

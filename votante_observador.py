@@ -3,7 +3,7 @@ import Pyro5.errors
 import Pyro5.server
 import sys
 import time
-
+import threading
 
 @Pyro5.api.expose
 class Votante:
@@ -13,9 +13,11 @@ class Votante:
         self.log = []
         self.ultima_epoca = 0
         self.lider_uri = uri_lider  # URI do líder
+        #self.heartbeat_count = 0  # Adiciona um contador para rastrear chamadas de heartbeat
 
-    def heartbeat(self):
-        return True
+    # def heartbeat(self):
+    #     return True
+    
     def buscar(self, offset, epoca):
         print("Aqui0")
         # Obtém os dados do líder
@@ -55,15 +57,41 @@ class Votante:
         else:
             print(f"Mensagem já replicada: {mensagem}")
 
-    def heartbeat(self):                                     
+    @Pyro5.api.expose
+    def heartbeat(self): 
+        #self.heartbeat_count += 1
+        #if self.heartbeat_count == 2:
+            #return False 
         print("Heartbeat recebido do líder.")
         return True
+    
+def iniciar_votante(votante_id, uri_lider):
+    """Inicializa um Votante e o registra no servidor de nomes."""
+    votante = Votante(votante_id, uri_lider)
+    daemon = Pyro5.server.Daemon()  # Cria um daemon para o votante
+    uri = daemon.register(votante)
+    
+    try:
+        servidor_nomes = Pyro5.api.locate_ns()
+        servidor_nomes.register(f"Votante_{votante_id}", uri)
+        print(f"Votante {votante_id} registrado com URI: {uri}")
+
+        # Cria um novo proxy para o líder em cada thread
+        lider_proxy = Pyro5.api.Proxy(uri_lider)
+        lider_proxy.registrar_votante(uri)  # Registra o votante no líder
+        print(f"Votante {votante_id} registrado no lider")
+    except Pyro5.errors.NamingError as e:
+        print(f"Erro ao registrar votante {votante_id} no servidor de nomes: {e}")
+    
+    daemon.requestLoop()  # Mantém o votante ativo para interagir com o líder
     
 
 @Pyro5.server.expose
 class Observador:
-    def __init__(self):
+    def __init__(self, observador_id, uri_lider):
         self.messagens_notifications = []
+        self.observador_id = observador_id
+        self.uri_lider = uri_lider
 
     def replicar_notificacao(self, menssage):                   # Recebe uma notificação do Líder
         if menssage not in self.messagens_notifications:
@@ -71,6 +99,26 @@ class Observador:
             print(f"[Observador] Notificação recebida: {menssage}")
         else:
             print(f"[Observador] Notificação já recebida: {menssage}")
+
+def iniciar_observador(id_observador,uri_lider):
+    """Inicializa um Votante e o registra no servidor de nomes."""
+    observador = Observador(id_observador, uri_lider)
+    daemon = Pyro5.server.Daemon()  # Cria um daemon para o votante
+    uri = daemon.register(observador)
+    
+    try:
+        servidor_nomes = Pyro5.api.locate_ns()
+        servidor_nomes.register(f"Observador", uri)
+        print(f"Observador registrado com URI: {uri}")
+
+        # Cria um novo proxy para o líder em cada thread
+        lider_proxy = Pyro5.api.Proxy(uri_lider)
+        lider_proxy.registrar_observador(uri)  # Registra o votante no líder
+        print(f"Observador registrado no lider")
+    except Pyro5.errors.NamingError as e:
+        print(f"Erro ao registrar observador no servidor de nomes: {e}")
+    
+    daemon.requestLoop()  # Mantém o votante ativo para interagir com o líder
 
 def conection(role):
     daemon = Pyro5.server.Daemon()  # Criar um único daemon
@@ -92,15 +140,18 @@ def conection(role):
     if role == "votante":
         print("EstouAqui!!!")
         votante_id = f"Votante_{time.time()}"  # Identificador único baseado no timestamp
-        votante = Votante(votante_id)
+        votante = Votante(votante_id, uri_lider)
         uri = daemon.register(votante)
         ns.register("Votante1", uri)
         print(f"Votante registrado com URI: {uri} - id {votante_id}")
 
         # Teste de Comunicação com o Líder
         try:
-            lider.registrar_votante(uri)  # Registrar o votante no Líder
-            print(f"Votante {votante_id} registrado no Líder com URI {uri}.")
+            votante_thread = threading.Thread(target=iniciar_votante, args=(votante_id, uri_lider), daemon=True)
+            votante_thread.start()
+            time.sleep(1)  # Aguarde um pouco entre os votantes
+            # lider.registrar_votante(uri)  # Registrar o votante no Líder
+            # print(f"Votante {votante_id} registrado no Líder com URI {uri}.")
             #print(f"Votante {uri} registrado no Líder.")
             #lider.publicar_mensagem("Mensagem de teste do Votante")  # Enviar mensagem ao Líder
         except Pyro5.errors.CommunicationError as e:
@@ -108,15 +159,18 @@ def conection(role):
 
     elif role == "observador":
         observador_id = f"Observador_{time.time()}"  # Identificador único
-        observador = Observador()
+        observador = Observador(observador_id, uri_lider)
         uri = daemon.register(observador)
         ns.register(observador_id, uri)
         print(f"Observador registrado com URI: {uri} - id: {observador_id}")
 
         # Teste de Comunicação com o Líder
         try:
-            lider.registrar_observador(uri, observador_id)  # Registrar o observador no Líder
-            print(f"Observador {uri} registrado no Líder.")
+            observador_thread = threading.Thread(target=iniciar_observador, args=(observador_id,uri_lider,), daemon=True)
+            observador_thread.start()
+            time.sleep(1)
+            # lider.registrar_observador(uri)  # Registrar o observador no Líder
+            # print(f"Observador {uri} registrado no Líder.")
             #lider.publicar_mensagem("Mensagem de teste do Observador")  # Enviar mensagem ao Líder
         except Pyro5.errors.CommunicationError as e:
             print(f"[Erro de Comunicação] Falha ao comunicar com o Líder: {e}")
