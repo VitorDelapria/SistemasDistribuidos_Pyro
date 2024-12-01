@@ -7,8 +7,9 @@ class Consumidor:
     def consume_messages(self, offset):
         print(f"Buscando mensagens a partir do offset: {offset}")
         try:
-            print(f"EstouAQui!")
+            print(f"EstouAQui! - {offset}")
             messages = self.broker.obter_mensagens_commitadas(offset)
+            print(f"Mensagem - {messages}")
             if messages:
                 for message in messages:
                     print(f"Mensagem consumida: {message}")

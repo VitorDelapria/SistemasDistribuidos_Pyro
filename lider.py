@@ -7,8 +7,6 @@ import Pyro5.client
 import time
 import threading
 
-
-@Pyro5.server.expose
 class Lider(object):
     def __init__(self, max_falhas):
         self.votantes = []
@@ -20,22 +18,23 @@ class Lider(object):
         self.max_falhas = max_falhas # Numero maximo de falhas toleradas
         self.quorum = 2 * max_falhas + 1 # tamanho do quorum
         self.falhas = {}
-        #self.falhas_toleradas = 1
-        #self.quorum = self.falhas_toleradas + 1 
 
+    @Pyro5.api.expose
     def registrar_votante(self, uri):
-        print(f"ESTOU AQUI NO VOTANTE")
         if uri not in self.votantes:
             self.votantes.append(uri)
             print(f"Votante registrado: {uri}")
         else:
             print(f"Votante já registrado: {uri}")
 
+    @Pyro5.api.expose
     def registrar_observador(self, uri):
         self.observadores.append(uri)   
         print(f"Observador registrado: {uri}")
 
+    @Pyro5.api.expose
     def publicar_mensagem(self, mensagem):
+        print(f"ESTOU EM PUBLICAR MENSAGEM!")
         if mensagem not in [entry["mensagem"] for entry in self.log]:
             nova_entrada = {"mensagem": mensagem, "confirmado": False, "epoca": len(self.log)}
             self.log.append(nova_entrada)
@@ -49,13 +48,13 @@ class Lider(object):
         for uri in self.votantes:
             try:
                 votante = Pyro5.api.Proxy(uri)
-                print("OLÁ ESTOU")
-                votante.buscar(offset, len(self.log))
                 print(f"Notificado votante {uri} sobre novo log no offset {offset}.")
+                votante.buscar(offset, len(self.log))
             except Pyro5.errors.CommunicationError as e:
                 print(f"Falha ao notificar votante {uri}: {e}")
 
-    def fornecer_dados(self, offset, epoca):
+    @Pyro5.api.expose
+    def fornecer_dados(self, offset, epoca):    
         # Retorna os dados de log a partir do offset e epoca
         dados = {"erro": False, "dados": [], "maior_offset": len(self.log) - 1, "maior_epoca": epoca}
         
@@ -69,7 +68,7 @@ class Lider(object):
         
         return dados
     
-
+    @Pyro5.api.expose
     def receber_confirmacao(self, offset, votante_uri):
         if offset not in self.confirmacoes:
             self.confirmacoes[offset] = set()
@@ -80,44 +79,35 @@ class Lider(object):
             print(f"Quorum atingido para a mensagem no offset {offset}.")
             self.commit_mensagem(self.log[offset]["mensagem"])
 
-    def notificar_observadores(self, menssage):
+    @Pyro5.api.expose
+    def notificar_observadores(self, offset):
         for uri in self.observadores:
             try:
                 observador = Pyro5.api.Proxy(uri)
-                observador.replicar_notificacao(menssage)
-                print(f"Notificação enviada para: {uri}")
+                print(f"Notificado Observador {uri} sobre novo log no offset {offset}.")
+                observador.buscar(offset, len(self.log))
             except Pyro5.errors.CommunicationError:
                 print(f"Falha ao notificar {uri}. Observador pode estar offline. ")
 
-    @Pyro5.api.expose
-    def enviar_heartbeat(self, intervalo=5):
-        print(f"Estou aqui - {self.votantes}")
-        def _heartbeat_task():
-            while True:
-                print("Enviando Heartbeats...")
-                print(f"votantes - {self.votantes}")
-                for uri in self.votantes:
-                    try:
-                        votante = Pyro5.api.Proxy(uri)
-                        if not votante.heartbeat():
-
-                            print(f"matou votante!!!")
-                            raise Pyro5.errors.CommunicationError("Heartbeat não reconhecido.")
-                        #print(f"Heartbeat enviado e reconhecido por {uri}")
-                        else:
-                            print(f"Votante Existe!!! - {votante}")
-                        self.falhas[uri] = 0 
-                    except Pyro5.errors.CommunicationError:
-                        print(f"Falha no Heartbeat com {uri}. Incrementando contador de falhas.")
-                        self.falhas[uri] = self.falhas.get(uri, 0) + 1
-                        if self.falhas[uri] >= self.max_falhas:
-                            print(f"Votante {uri} atingiu o limite de falhas. Será removido.")
-                            self.remover_votante(uri)
-                            self.promover_observador()
-                time.sleep(intervalo)
-
-        threading.Thread(target=_heartbeat_task, daemon=True).start()
-
+    def enviar_heartbeat(self):
+        while True:
+            print("Enviando Heartbeats...")
+            print(f"votantes - {self.votantes}")
+            for uri in self.votantes:
+                try:
+                    votante = Pyro5.api.Proxy(uri)
+                    if not votante.heartbeat():
+                        print(f"matou votante!!!")
+                        raise Pyro5.errors.CommunicationError("Heartbeat não reconhecido.")
+                    self.falhas[uri] = 0 
+                except Pyro5.errors.CommunicationError:
+                    print(f"Falha no Heartbeat com {uri}. Incrementando contador de falhas.")
+                    self.falhas[uri] = self.falhas.get(uri, 0) + 1
+                    if self.falhas[uri] >= (self.quorum // 2) + 1:
+                        print(f"Votante {uri} atingiu o limite de falhas. Será removido.")
+                        self.remover_votante(uri)
+                        self.promover_observador()
+            time.sleep(5)
 
     def remover_votante(self, uri):
         if uri in self.votantes:
@@ -129,18 +119,26 @@ class Lider(object):
             novo_votante_uri = self.observadores.pop(0) 
             self.votantes.append(novo_votante_uri)
             print(f"Observador promovido a votante: {novo_votante_uri}")
+            try:
+                observador = Pyro5.api.Proxy(novo_votante_uri)
+                print(f"PROMOVENDO OBSERVADOR!")
+                observador.notificado_promocao()
+            except:
+                print(f"Erro ao notificar promoção de {novo_votante_uri}")
         else:
             print("Nenhum observador disponível para promoção. ")
 
     def commit_mensagem(self, mensagem): # marca mensagem no indice fornecido como comitada
         if mensagem not in self.mensagens_commitadas:
             self.mensagens_commitadas.append(mensagem)
-            #print(f"posição 1 {self.mensagens_commitadas[0]}")
+            print(f"posição 1 {self.mensagens_commitadas[0]}")
             print(f"Mensagem comitada: {mensagem}")
         else:
             print(f"Mensagem já foi commitada: {mensagem}")
 
+    @Pyro5.api.expose
     def obter_mensagens_commitadas(self, offset): # Retorna todas as mensagens que foram commitadas a partir de um offset.
+        print(f"teste - {self.mensagens_commitadas[offset]}")
         return self.mensagens_commitadas[offset:]
 
 def send_heartbeat(lider):
