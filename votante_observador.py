@@ -10,28 +10,29 @@ class Votante:
         self.mensagens = []  # Armazena mensagens replicadas
         self.votante_id = votante_id
         self.log = []
+        self.log_commitadas = []
         self.ultima_epoca = 0
         self.lider_uri = uri_lider  # URI do líder
 
     @Pyro5.api.expose
     def buscar(self, offset, epoca):
-        print("Aqui0")
+        #print("Aqui0")
         # Obtém os dados do líder
         try:
-            print("Aqui1")
+            #print("Aqui1")
             lider_proxy = Pyro5.api.Proxy(self.lider_uri)
             resposta = lider_proxy.fornecer_dados(offset, epoca)
-            print("Aqui1")
+            #print("Aqui1")
             if resposta["erro"]:
-                print("Aqui2")
+                #print("Aqui2")
                 print(f"Votante {self.votante_id}: Log inconsistente. Truncando até offset {resposta['maior_offset']}.")
                 self.log = self.log[:resposta["maior_offset"] + 1]
                 self.ultima_epoca = resposta["maior_epoca"]
                 self.buscar(resposta["maior_offset"], resposta["maior_epoca"])  # Repetir busca com dados atualizados
             else:
-                print("Aqui3")
                 self.log.extend(resposta["dados"])
                 print(f"Votante {self.votante_id}: Log atualizado com {len(resposta['dados'])} novas entradas.")
+                self.log[offset]["confirmado"] = True
                 for i in range(len(resposta["dados"])):
                     self.confirmar(offset + i)
         except Pyro5.errors.CommunicationError as e:
@@ -42,18 +43,18 @@ class Votante:
         try:
             lider_proxy = Pyro5.api.Proxy(self.lider_uri)
             lider_proxy.receber_confirmacao(offset, self.votante_id)
+            replicar_commit = self.log.pop(0)
+            self.log_commitadas.append(replicar_commit) 
             print(f"Votante {self.votante_id}: Confirmação enviada para offset {offset}.")
-            self.replicar(self.log[offset]["mensagem"])
+            self.replicar()
         except Pyro5.errors.CommunicationError as e:
             print(f"Erro ao enviar confirmação: {e}")
 
-    def replicar(self, mensagem):  
-        if mensagem not in self.mensagens:                          # Replica as mensagens
-            print("EstouAqui3!!!")
-            self.mensagens.append(mensagem)
-            print(f"[Votante: {self.votante_id}] - Mensagem Replicada: {mensagem}")
-        else:
-            print(f"Mensagem já replicada: {mensagem}")
+    def replicar(self):  
+        if not self.log_commitadas:
+            print(f"Log Vazio!")
+            return
+        print(f"[Votante: {self.votante_id}] - Mensagem Replicada: {self.log_commitadas}")
 
     @Pyro5.api.expose
     def heartbeat(self): 
@@ -84,39 +85,40 @@ class Observador:
     def __init__(self, observador_id, lider_uri):
         self.messagens_notifications = []
         self.observador_id = observador_id
-        self.uri_lider = lider_uri
         self.log = []
+        self.log_commitadas = []
         self.ultima_epoca = 0
+        self.uri_lider = lider_uri
 
-    def replicar_notificacao(self, menssage):                   # Recebe uma notificação do Líder
-        if menssage not in self.messagens_notifications:
-            self.messagens_notifications.append(menssage)
-            print(f"[Observador] Notificação recebida: {menssage}")
-        else:
-            print(f"[Observador] Notificação já recebida: {menssage}")
+    def replicar_notificacao(self):                   # Recebe uma notificação do Líder
+        if not self.log_commitadas:
+            print(f"Log Vazio!")
+            return
+        print(f"[Votante: {self.observador_id}] - Mensagem Replicada: {self.log_commitadas}")
     
     @Pyro5.api.expose
     def heartbeat(self):
+        print("Heartbeat recebido do líder.")
         return True
     
     @Pyro5.api.expose
     def buscar(self, offset, epoca):
         # Obtém os dados do líder
         try:
-            print("Aqui1")
+            #print("Aqui1")
             lider_proxy = Pyro5.api.Proxy(self.uri_lider)
             resposta = lider_proxy.fornecer_dados(offset, epoca)
-            print("Aqui1")
+            #print("Aqui1")
             if resposta["erro"]:
-                print("Aqui2")
+                #print("Aqui2")
                 print(f"Observador {self.observador_id}: Log inconsistente. Truncando até offset {resposta['maior_offset']}.")
                 self.log = self.log[:resposta["maior_offset"] + 1]
                 self.ultima_epoca = resposta["maior_epoca"]
                 self.buscar(resposta["maior_offset"], resposta["maior_epoca"])  # Repetir busca com dados atualizados
             else:
-                print("Aqui3")
                 self.log.extend(resposta["dados"])
                 print(f"Observador {self.observador_id}: Log atualizado com {len(resposta['dados'])} novas entradas.")
+                self.log[offset]["confirmado"] = True
                 for i in range(len(resposta["dados"])):
                     self.confirmar(offset + i)
         except Pyro5.errors.CommunicationError as e:
@@ -126,17 +128,19 @@ class Observador:
         try:
             lider_proxy = Pyro5.api.Proxy(self.uri_lider)
             lider_proxy.receber_confirmacao(offset, self.observador_id)
+            replicar_commit = self.log.pop(0)
+            self.log_commitadas.append(replicar_commit)
             print(f"Observador {self.observador_id}: Confirmação enviada para offset {offset}.")
-            self.replicar_notificacao(self.log[offset]["mensagem"])
+            self.replicar_notificacao()
+            #self.log[offset]["mensagem"] - Testar depois
         except Pyro5.errors.CommunicationError as e:
             print(f"Erro ao enviar confirmação: {e}")
 
     @Pyro5.api.expose
     def notificado_promocao(self):
+        lider = Pyro5.api.Proxy(self.uri_lider)
         print(f"Observador promovido a Votante!")
-        self.notificar_observadores(len(self.log) - 1)
-
-    
+        lider.notificado_observadores(len(self.log) - 1)
 
 def iniciar_observador(id_observador,uri_lider):
     """Inicializa um Votante e o registra no servidor de nomes."""

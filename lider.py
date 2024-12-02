@@ -12,8 +12,8 @@ class Lider(object):
         self.votantes = []
         self.observadores = []
         self.mensagens = []
-        self.log = [] # Log de gravações do Lider (mensagem + metadados)
-        self.mensagens_commitadas = []
+        self.log = [] # Log normal
+        self.log_commitadas = []
         self.confirmacoes = {} # confirmações recebidas dos votantes
         self.max_falhas = max_falhas # Numero maximo de falhas toleradas
         self.quorum = 2 * max_falhas + 1 # tamanho do quorum
@@ -34,7 +34,7 @@ class Lider(object):
 
     @Pyro5.api.expose
     def publicar_mensagem(self, mensagem):
-        print(f"ESTOU EM PUBLICAR MENSAGEM!")
+        #print(f"ESTOU EM PUBLICAR MENSAGEM!")
         if mensagem not in [entry["mensagem"] for entry in self.log]:
             nova_entrada = {"mensagem": mensagem, "confirmado": False, "epoca": len(self.log)}
             self.log.append(nova_entrada)
@@ -77,10 +77,10 @@ class Lider(object):
         if len(self.confirmacoes[offset]) >= (self.quorum // 2) + 1:
             self.log[offset]["confirmado"] = True
             print(f"Quorum atingido para a mensagem no offset {offset}.")
-            self.commit_mensagem(self.log[offset]["mensagem"])
+            self.commit_mensagem()
 
     @Pyro5.api.expose
-    def notificar_observadores(self, offset):
+    def notificado_observadores(self, offset):
         for uri in self.observadores:
             try:
                 observador = Pyro5.api.Proxy(uri)
@@ -92,7 +92,7 @@ class Lider(object):
     def enviar_heartbeat(self):
         while True:
             print("Enviando Heartbeats...")
-            print(f"votantes - {self.votantes}")
+            #print(f"votantes - {self.votantes}")
             for uri in self.votantes:
                 try:
                     votante = Pyro5.api.Proxy(uri)
@@ -128,18 +128,25 @@ class Lider(object):
         else:
             print("Nenhum observador disponível para promoção. ")
 
-    def commit_mensagem(self, mensagem): # marca mensagem no indice fornecido como comitada
-        if mensagem not in self.mensagens_commitadas:
-            self.mensagens_commitadas.append(mensagem)
-            print(f"posição 1 {self.mensagens_commitadas[0]}")
-            print(f"Mensagem comitada: {mensagem}")
+    def commit_mensagem(self): # marca mensagem no indice fornecido como comitada
+        if not self.log:  # Verifica se há mensagens no log normal
+            print("Log normal está vazio. Nenhuma mensagem para commitar.")
+            return
+        mensagem_a_commit = self.log[0]  # Seleciona a primeira mensagem do log normal
+        if mensagem_a_commit in self.log_commitadas:
+            print(f"Mensagem já foi commitada: {mensagem_a_commit}")
+            self.log.pop(0)
         else:
-            print(f"Mensagem já foi commitada: {mensagem}")
+            commit = self.log.pop(0)
+            self.log_commitadas.append(commit)
+            print(f"Mensagem comitada: {commit}")
+        # print(f"Log Normal - {self.log}")
+        # print(f"Log Commitada - {self.log_commitadas}")
 
     @Pyro5.api.expose
     def obter_mensagens_commitadas(self, offset): # Retorna todas as mensagens que foram commitadas a partir de um offset.
-        print(f"teste - {self.mensagens_commitadas[offset]}")
-        return self.mensagens_commitadas[offset:]
+        #print(f"teste - {self.log_commitadas[offset]}")
+        return self.log_commitadas[offset:]
 
 def send_heartbeat(lider):
     """Envia heartbeats periodicamente para os votantes registrados."""
