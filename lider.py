@@ -8,15 +8,14 @@ import time
 import threading
 
 class Lider(object):
-    def __init__(self, max_falhas):
+    def __init__(self):
         self.votantes = []
         self.observadores = []
         self.mensagens = []
         self.log = [] # Log normal
         self.log_commitadas = []
         self.confirmacoes = {} # confirmações recebidas dos votantes
-        self.max_falhas = max_falhas # Numero maximo de falhas toleradas
-        self.quorum = 2 * max_falhas + 1 # tamanho do quorum
+        self.quorum = 5 # tamanho do quorum
         self.falhas = {}
 
     @Pyro5.api.expose
@@ -69,10 +68,11 @@ class Lider(object):
         return dados
     
     @Pyro5.api.expose
-    def receber_confirmacao(self, offset, votante_uri):
+    def receber_confirmacao(self, offset, votante_uri, uri_lider):
         if offset not in self.confirmacoes:
             self.confirmacoes[offset] = set()
         self.confirmacoes[offset].add(votante_uri)
+        self.confirmacoes[offset].add(uri_lider)
 
         if len(self.confirmacoes[offset]) >= (self.quorum // 2) + 1:
             self.log[offset]["confirmado"] = True
@@ -157,14 +157,14 @@ def send_heartbeat(lider):
 
 def conection(): 
 
-    lider = Lider(max_falhas=1)
+    lider = Lider()
     daemon = Pyro5.server.Daemon()
     uri = daemon.register(lider)
     try: 
         servidor_nomes = Pyro5.api.locate_ns()
         servidor_nomes.register("Lider_Epoca1", uri)
         print(f"Líder registado com uri: {uri}")
-        threading.Thread(target=send_heartbeat, args=(lider,), daemon=True).start()
+        threading.Thread(target=lider.enviar_heartbeat, args=(), daemon=True).start()
     except Pyro5.errors.NamingError as e:
         print(f"Erro ao registrar no servidor de nomes: {e}")
     daemon.requestLoop()

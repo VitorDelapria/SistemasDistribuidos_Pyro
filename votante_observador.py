@@ -13,6 +13,9 @@ class Votante:
         self.log_commitadas = []
         self.ultima_epoca = 0
         self.lider_uri = uri_lider  # URI do líder
+        self.quorum = 5 # tamanho do quorum
+        self.falhas = {}
+
 
     @Pyro5.api.expose
     def buscar(self, offset, epoca):
@@ -42,7 +45,7 @@ class Votante:
     def confirmar(self, offset):
         try:
             lider_proxy = Pyro5.api.Proxy(self.lider_uri)
-            lider_proxy.receber_confirmacao(offset, self.votante_id)
+            lider_proxy.receber_confirmacao(offset, self.votante_id, self.lider_uri)
             replicar_commit = self.log.pop(0)
             self.log_commitadas.append(replicar_commit) 
             print(f"Votante {self.votante_id}: Confirmação enviada para offset {offset}.")
@@ -89,6 +92,9 @@ class Observador:
         self.log_commitadas = []
         self.ultima_epoca = 0
         self.uri_lider = lider_uri
+        self.quorum = 5 # tamanho do quorum
+        self.falhas = {}
+
 
     def replicar_notificacao(self):                   # Recebe uma notificação do Líder
         if not self.log_commitadas:
@@ -127,7 +133,7 @@ class Observador:
     def confirmar(self, offset):
         try:
             lider_proxy = Pyro5.api.Proxy(self.uri_lider)
-            lider_proxy.receber_confirmacao(offset, self.observador_id)
+            lider_proxy.receber_confirmacao(offset, self.observador_id, self.uri_lider)
             replicar_commit = self.log.pop(0)
             self.log_commitadas.append(replicar_commit)
             print(f"Observador {self.observador_id}: Confirmação enviada para offset {offset}.")
@@ -169,7 +175,7 @@ def conection(role):
     # Conectar com o Líder
     try:
         uri_lider = ns.lookup("Lider_Epoca1")  # Buscando URI do líder no serviço de nomes
-        lider = Pyro5.api.Proxy(uri_lider)  # Criando um proxy para o líder
+        #lider = Pyro5.api.Proxy(uri_lider)  # Criando um proxy para o líder
         print("[Conexão] Líder encontrado com sucesso.")
     except Pyro5.errors.NamingError:
         print("[Erro] Serviço de nomes não está acessível.")
