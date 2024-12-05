@@ -118,19 +118,26 @@ class Observador:
             else:
                 self.log.extend(resposta["dados"])
                 print(f"Observador {self.observador_id}: Log atualizado com {len(resposta['dados'])} novas entradas.")
-                self.log[offset]["confirmado"] = True
+    
+                """ self.log[offset]["confirmado"] = True
                 for i in range(len(resposta["dados"])):
-                    self.confirmar(offset + i)
+                    self.confirmar(offset + i) """
+        
+                lider_proxy = Pyro5.api.Proxy(self.uri_lider)
+                lider_proxy.receber_confirmacao(offset, self.observador_id)
+
+        
         except Pyro5.errors.CommunicationError as e:
             print(f"Erro ao tentar acessar o Líder para buscar dados: {e}")
-        
-    def confirmar(self, offset):
+    
+    @Pyro5.api.expose
+    def confirmar(self):
         try:
-            lider_proxy = Pyro5.api.Proxy(self.uri_lider)
-            lider_proxy.receber_confirmacao(offset, self.observador_id)
+        
+
             replicar_commit = self.log.pop(0)
             self.log_commitadas.append(replicar_commit)
-            print(f"Observador {self.observador_id}: Confirmação enviada para offset {offset}.")
+            print(f"Observador {self.observador_id}: Confirmação enviada.")
             self.replicar_notificacao()
             #self.log[offset]["mensagem"] - Testar depois
         except Pyro5.errors.CommunicationError as e:

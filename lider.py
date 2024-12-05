@@ -78,6 +78,8 @@ class Lider(object):
             self.log[offset]["confirmado"] = True
             print(f"Quorum atingido para a mensagem no offset {offset}.")
             self.commit_mensagem()
+            votante = Pyro5.api.Proxy(votante_uri)
+            votante.confirmar()
 
     @Pyro5.api.expose
     def notificado_observadores(self, offset):
