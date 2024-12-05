@@ -75,7 +75,7 @@ class Lider(object):
         self.confirmacoes[offset].add(uri_lider)
 
         if len(self.confirmacoes[offset]) >= (self.quorum // 2) + 1:
-            self.log[offset]["confirmado"] = True
+            # self.log[offset]["confirmado"] = True
             print(f"Quorum atingido para a mensagem no offset {offset}.")
             self.commit_mensagem()
 
@@ -107,7 +107,7 @@ class Lider(object):
                         print(f"Votante {uri} atingiu o limite de falhas. Será removido.")
                         self.remover_votante(uri)
                         self.promover_observador()
-            time.sleep(5)
+            time.sleep(3)
 
     def remover_votante(self, uri):
         if uri in self.votantes:
@@ -139,22 +139,16 @@ class Lider(object):
         else:
             commit = self.log.pop(0)
             self.log_commitadas.append(commit)
+            # Itera sobre as mensagens commitadas e marca todas como confirmadas
+            for i in range(len(self.log_commitadas)):
+                self.log_commitadas[i]["confirmado"] = True
             print(f"Mensagem comitada: {commit}")
-        # print(f"Log Normal - {self.log}")
-        # print(f"Log Commitada - {self.log_commitadas}")
 
     @Pyro5.api.expose
     def obter_mensagens_commitadas(self, offset): # Retorna todas as mensagens que foram commitadas a partir de um offset.
         #print(f"teste - {self.log_commitadas[offset]}")
         return self.log_commitadas[offset:]
-
-def send_heartbeat(lider):
-    """Envia heartbeats periodicamente para os votantes registrados."""
-    while True:
-        print("Enviando heartbeat para os votantes...")
-        lider.enviar_heartbeat()
-        time.sleep(5)
-
+    
 def conection(): 
 
     lider = Lider()

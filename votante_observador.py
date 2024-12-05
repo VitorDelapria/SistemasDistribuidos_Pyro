@@ -13,13 +13,14 @@ class Votante:
         self.log_commitadas = []
         self.ultima_epoca = 0
         self.lider_uri = uri_lider  # URI do líder
-        self.quorum = 5 # tamanho do quorum
-        self.falhas = {}
+        #self.quorum = 5 # tamanho do quorum
+        #self.falhas = {}
 
 
     @Pyro5.api.expose
     def buscar(self, offset, epoca):
-        #print("Aqui0")
+        print(f"Aqui0 - {offset}")
+
         # Obtém os dados do líder
         try:
             #print("Aqui1")
@@ -41,7 +42,6 @@ class Votante:
         except Pyro5.errors.CommunicationError as e:
             print(f"Erro ao tentar acessar o Líder para buscar dados: {e}")
 
-    @Pyro5.api.expose
     def confirmar(self, offset):
         try:
             lider_proxy = Pyro5.api.Proxy(self.lider_uri)
@@ -88,12 +88,12 @@ class Observador:
     def __init__(self, observador_id, lider_uri):
         self.messagens_notifications = []
         self.observador_id = observador_id
-        self.log = []
+        # self.log = []
         self.log_commitadas = []
         self.ultima_epoca = 0
         self.uri_lider = lider_uri
-        self.quorum = 5 # tamanho do quorum
-        self.falhas = {}
+        #self.quorum = 5 # tamanho do quorum
+        #self.falhas = {}
 
 
     def replicar_notificacao(self):                   # Recebe uma notificação do Líder
@@ -106,47 +106,44 @@ class Observador:
     def heartbeat(self):
         print("Heartbeat recebido do líder.")
         return True
-    
+
     @Pyro5.api.expose
     def buscar(self, offset, epoca):
-        # Obtém os dados do líder
-        try:
-            #print("Aqui1")
-            lider_proxy = Pyro5.api.Proxy(self.uri_lider)
-            resposta = lider_proxy.fornecer_dados(offset, epoca)
-            #print("Aqui1")
-            if resposta["erro"]:
-                #print("Aqui2")
-                print(f"Observador {self.observador_id}: Log inconsistente. Truncando até offset {resposta['maior_offset']}.")
-                self.log = self.log[:resposta["maior_offset"] + 1]
-                self.ultima_epoca = resposta["maior_epoca"]
-                self.buscar(resposta["maior_offset"], resposta["maior_epoca"])  # Repetir busca com dados atualizados
-            else:
-                self.log.extend(resposta["dados"])
-                print(f"Observador {self.observador_id}: Log atualizado com {len(resposta['dados'])} novas entradas.")
-                self.log[offset]["confirmado"] = True
-                for i in range(len(resposta["dados"])):
-                    self.confirmar(offset + i)
-        except Pyro5.errors.CommunicationError as e:
-            print(f"Erro ao tentar acessar o Líder para buscar dados: {e}")
-        
-    def confirmar(self, offset):
         try:
             lider_proxy = Pyro5.api.Proxy(self.uri_lider)
             lider_proxy.receber_confirmacao(offset, self.observador_id, self.uri_lider)
-            replicar_commit = self.log.pop(0)
-            self.log_commitadas.append(replicar_commit)
-            print(f"Observador {self.observador_id}: Confirmação enviada para offset {offset}.")
-            self.replicar_notificacao()
-            #self.log[offset]["mensagem"] - Testar depois
+
+            # Envia confirmação para o líder
+            print(f"Votante {self.observador_id}: Confirmação enviada para o offset {offset}.")
+
+            replicar_commit = lider_proxy.obter_mensagens_commitadas(offset)
+            print(f"Observador - {replicar_commit}")
+
+            if replicar_commit:
+                    # Adiciona ou substitui mensagens ao log commitado
+                for i, mensagem in enumerate(replicar_commit, start=offset):
+                    if i >= len(self.log_commitadas):
+                        self.log_commitadas.append(mensagem)
+                    else:
+                        self.log_commitadas[i] = mensagem
+
+                print(f"Votante {self.observador_id}: {len(replicar_commit)} mensagens commitadas recebidas.")
+                # print(f"[Votante: {self.observador_id}] - Mensagem Replicada: {self.log_commitadas}")
+                self.replicar_notificacao()
+            else:
+                print(f"Votante {self.observador_id}: Nenhuma mensagem commitada encontrada para o offset {offset}.")
+
         except Pyro5.errors.CommunicationError as e:
-            print(f"Erro ao enviar confirmação: {e}")
+            print(f"Erro ao tentar acessar o Líder para buscar dados: {e}")
+        except Exception as e:
+            print(f"Erro inesperado ao buscar mensagens: {e}")
 
     @Pyro5.api.expose
     def notificado_promocao(self):
+        print("TESTEAQUI!!!")
         lider = Pyro5.api.Proxy(self.uri_lider)
         print(f"Observador promovido a Votante!")
-        lider.notificado_observadores(len(self.log) - 1)
+        lider.notificado_observadores(len(self.log_commitadas) - 1)
 
 def iniciar_observador(id_observador,uri_lider):
     """Inicializa um Votante e o registra no servidor de nomes."""
